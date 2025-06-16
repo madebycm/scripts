@@ -122,6 +122,36 @@ if [ "$1" = "uninstall" ]; then
     exit 0
 fi
 
+# Handle blacklist command
+if [ "$1" = "blacklist" ]; then
+    # Determine the editor to use
+    EDITOR="${EDITOR:-nano}"
+    
+    # Open blacklist.json in the editor
+    if [ -f "$BLACKLIST_FILE" ]; then
+        $EDITOR "$BLACKLIST_FILE"
+    else
+        echo "Error: Blacklist file not found at $BLACKLIST_FILE"
+        exit 1
+    fi
+    exit 0
+fi
+
+# Handle allowed command
+if [ "$1" = "allowed" ]; then
+    # Determine the editor to use
+    EDITOR="${EDITOR:-nano}"
+    
+    # Open allowed.json in the editor
+    if [ -f "$ALLOWED_FILE" ]; then
+        $EDITOR "$ALLOWED_FILE"
+    else
+        echo "Error: Allowed file not found at $ALLOWED_FILE"
+        exit 1
+    fi
+    exit 0
+fi
+
 # Find .claude/settings.local.json file
 find_settings_file() {
     local current_dir="$PWD"

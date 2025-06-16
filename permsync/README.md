@@ -63,11 +63,19 @@ All files use the same JSON structure:
 {
   "permissions": {
     "blacklist": [
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(npm:*)",
+      "*npx*",
+      "*dangerous*"
     ]
   }
 }
 ```
+
+The blacklist supports wildcard patterns using `*` to match any characters. For example:
+- `Bash(rm:*)` - matches any rm command
+- `*npx*` - matches any permission containing "npx" (e.g., `Bash(npx prettier:*)`)
+- `*dangerous*` - matches any permission containing "dangerous"
 
 ### settings.local.json
 ```json
@@ -94,6 +102,8 @@ All files use the same JSON structure:
 - `permsync` - Run synchronization
 - `permsync install` - Install the tool
 - `permsync uninstall` - Remove the tool
+- `permsync blacklist` - Open blacklist.json in your editor
+- `permsync allowed` - Open allowed.json in your editor
 
 ## Files
 
