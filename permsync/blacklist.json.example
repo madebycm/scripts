@@ -1,7 +1,13 @@
 {
   "permissions": {
     "blacklist": [
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(npm:*)",
+      "*npx*",
+      "*dangerous*",
+      "Bash(sudo:*)",
+      "*eval*",
+      "Bash(curl*|*sh:*)"
     ]
   }
 }

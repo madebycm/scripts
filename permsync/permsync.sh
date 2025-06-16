@@ -160,8 +160,8 @@ read_blacklisted_permissions() {
         echo '{"permissions":{"blacklist":[]}}' | jq '.' > "$BLACKLIST_FILE"
     fi
     
-    # Read permissions from blacklist.json
-    jq -r '.permissions.blacklist[]' "$BLACKLIST_FILE" 2>/dev/null | grep -E '^Bash\(' | sort -u
+    # Read all blacklist patterns (including wildcards)
+    jq -r '.permissions.blacklist[]' "$BLACKLIST_FILE" 2>/dev/null | sort -u
 }
 
 # Write permissions to allowed.json
@@ -199,8 +199,26 @@ sync_permissions() {
     local filtered_allowed_perms=""
     while IFS= read -r perm; do
         if [[ -n "$perm" ]]; then
-            # Check if this permission is blacklisted
-            if ! echo "$blacklisted_perms" | grep -Fxq "$perm"; then
+            # Check if this permission matches any blacklist pattern
+            local is_blacklisted=false
+            while IFS= read -r blacklist_pattern; do
+                if [[ -n "$blacklist_pattern" ]]; then
+                    # Convert * wildcards to regex pattern matching
+                    # First escape special regex characters, but not *
+                    local pattern=$(echo "$blacklist_pattern" | sed 's/\([[\\.^$()|?+{}]\)/\\\1/g')
+                    # Then convert * to .*
+                    pattern="${pattern//\*/.*}"
+                    
+                    # Check if permission matches the pattern
+                    if echo "$perm" | grep -Eq "^${pattern}$"; then
+                        is_blacklisted=true
+                        break
+                    fi
+                fi
+            done <<< "$blacklisted_perms"
+            
+            # Only add if not blacklisted
+            if [[ "$is_blacklisted" == false ]]; then
                 if [[ -n "$filtered_allowed_perms" ]]; then
                     filtered_allowed_perms="$filtered_allowed_perms"$'\n'"$perm"
                 else
