@@ -25,6 +25,8 @@ Or install manually:
 
 This creates a wrapper script in `~/.local/bin/permsync` that can be run from anywhere.
 
+Protip: alias `claude` to `permsync && claude` 🔥
+
 ## Usage
 
 Navigate to any directory containing a `.claude/settings.local.json` file and run:
