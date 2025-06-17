@@ -197,12 +197,36 @@ sync_permissions() {
     
     # Find new permissions from local that aren't in allowed yet
     local new_from_local=""
+    local skipped_blacklisted=""
     while IFS= read -r perm; do
         if [[ -n "$perm" ]] && ! echo "$allowed_perms" | grep -Fxq "$perm"; then
-            if [[ -n "$new_from_local" ]]; then
-                new_from_local="$new_from_local"$'\n'"$perm"
+            # Check if this permission is blacklisted
+            local is_blacklisted=false
+            while IFS= read -r blacklist_pattern; do
+                if [[ -n "$blacklist_pattern" ]]; then
+                    # Convert * wildcards to regex pattern matching
+                    local pattern=$(echo "$blacklist_pattern" | sed 's/\([[\\.^$()|?+{}]\)/\\\1/g')
+                    pattern="${pattern//\*/.*}"
+                    
+                    if echo "$perm" | grep -Eq "^${pattern}$"; then
+                        is_blacklisted=true
+                        break
+                    fi
+                fi
+            done <<< "$blacklisted_perms"
+            
+            if [[ "$is_blacklisted" == true ]]; then
+                if [[ -n "$skipped_blacklisted" ]]; then
+                    skipped_blacklisted="$skipped_blacklisted"$'\n'"$perm"
+                else
+                    skipped_blacklisted="$perm"
+                fi
             else
-                new_from_local="$perm"
+                if [[ -n "$new_from_local" ]]; then
+                    new_from_local="$new_from_local"$'\n'"$perm"
+                else
+                    new_from_local="$perm"
+                fi
             fi
         fi
     done <<< "$json_perms"
@@ -287,12 +311,23 @@ sync_permissions() {
     # Show new commands added from local
     if [[ -n "$new_from_local" ]]; then
         echo ""
-        echo "✓ New commands added to allowed from local project:"
+        echo "✅ New commands added to allowed from local project:"
         while IFS= read -r perm; do
             if [[ -n "$perm" ]]; then
                 echo "  + $perm"
             fi
         done <<< "$new_from_local"
+    fi
+    
+    # Show blacklisted commands that were skipped
+    if [[ -n "$skipped_blacklisted" ]]; then
+        echo ""
+        echo "🚫 Commands skipped due to blacklist:"
+        while IFS= read -r perm; do
+            if [[ -n "$perm" ]]; then
+                echo "  ⊘ $perm"
+            fi
+        done <<< "$skipped_blacklisted"
     fi
 }
 
