@@ -1,0 +1,2 @@
+# run from docker folder (where this file is placed)
+/full/path/to/docker-compose exec db mysql -uroot -p123 -e "SELECT DATABASE();"
