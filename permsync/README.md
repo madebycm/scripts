@@ -105,17 +105,39 @@ The blacklist supports wildcard patterns using `*` to match any characters. For 
 - `permsync` - Run synchronization
 - `permsync install` - Install the tool
 - `permsync uninstall` - Remove the tool
-- `permsync blacklist` - Open blacklist.json in your editor
-- `permsync allowed` - Open allowed.json in your editor
-- `permsync add <command>` - Add a command to allowed.json (e.g., `permsync add tail`)
-- `permsync bl <command>` - Add a command to blacklist and remove from allowed.json (e.g., `permsync bl rm`)
+- `permsync manage` - Interactive manager for permissions (add, edit, delete, blacklist)
+
+## Interactive Manager
+
+The `permsync manage` command launches an interactive Python CLI for managing permissions:
+
+### Features
+- **Arrow key navigation** - Navigate through rules with ↑/↓ keys
+- **Mode switching** - Switch between Allowed and Blacklist views with TAB
+- **Add rules** - Press 'a' to add new permissions
+- **Edit rules** - Press 'e' to modify existing permissions
+- **Delete rules** - Press 'd' to remove permissions (with confirmation)
+- **Toggle blacklist** - Press 'b' to move items between allowed and blacklist
+- **Real-time updates** - Changes are immediately saved to JSON files
+
+### Key Bindings
+- `↑/↓` - Navigate through list
+- `TAB` - Switch between Allowed/Blacklist modes
+- `a` - Add new rule
+- `e` - Edit selected rule
+- `d` - Delete selected rule
+- `b` - Toggle blacklist status (move between lists)
+- `q` - Quit
+- `Enter` - Save changes (when editing/adding)
+- `Escape` - Cancel (when editing/adding)
 
 ## Files
 
-The script maintains three files in its installation directory:
+The script maintains four files in its installation directory:
 - `allowed.json` - Global allowlist of permissions
 - `blacklist.json` - Commands that should never be in the global allowlist
 - `permsync.sh` - The main script
+- `manage.py` - Interactive manager script
 
 ## Example
 
