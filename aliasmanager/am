@@ -1,0 +1,8 @@
+#!/bin/bash
+# @author madebycm (2025-01-23)
+
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Launch the alias manager
+python3 "$SCRIPT_DIR/alias_manager.py"
