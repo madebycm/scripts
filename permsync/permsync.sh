@@ -122,35 +122,6 @@ if [ "$1" = "uninstall" ]; then
     exit 0
 fi
 
-# Handle blacklist command
-if [ "$1" = "blacklist" ]; then
-    # Determine the editor to use
-    EDITOR="${EDITOR:-nano}"
-    
-    # Open blacklist.json in the editor
-    if [ -f "$BLACKLIST_FILE" ]; then
-        $EDITOR "$BLACKLIST_FILE"
-    else
-        echo "Error: Blacklist file not found at $BLACKLIST_FILE"
-        exit 1
-    fi
-    exit 0
-fi
-
-# Handle allowed command
-if [ "$1" = "allowed" ]; then
-    # Determine the editor to use
-    EDITOR="${EDITOR:-nano}"
-    
-    # Open allowed.json in the editor
-    if [ -f "$ALLOWED_FILE" ]; then
-        $EDITOR "$ALLOWED_FILE"
-    else
-        echo "Error: Allowed file not found at $ALLOWED_FILE"
-        exit 1
-    fi
-    exit 0
-fi
 
 # Command handlers will be placed after function definitions
 
@@ -338,83 +309,17 @@ main() {
     fi
 }
 
-# Handle add command
-if [ "$1" = "add" ]; then
-    if [ -z "$2" ]; then
-        echo "Error: Please specify a command to add"
-        echo "Usage: permsync add <command>"
-        echo "Example: permsync add tail"
-        exit 1
-    fi
-    
-    command="$2"
-    permission="Bash($command:*)"
-    
-    # Read current allowed permissions
-    current_perms=$(read_allowed_permissions)
-    
-    # Check if permission already exists
-    if echo "$current_perms" | grep -Fxq "$permission"; then
-        echo "Permission already exists: $permission"
-        exit 0
-    fi
-    
-    # Add the new permission
-    new_perms=$(echo -e "$current_perms\n$permission" | grep -v '^$' | sort -u)
-    write_allowed_permissions "$new_perms"
-    
-    echo "✓ Added permission: $permission"
-    exit 0
-fi
 
-# Handle bl (blacklist) command
-if [ "$1" = "bl" ]; then
-    if [ -z "$2" ]; then
-        echo "Error: Please specify a command to blacklist"
-        echo "Usage: permsync bl <command>"
-        echo "Example: permsync bl rm"
+# Handle manage command
+if [ "$1" = "manage" ]; then
+    # Check if Python 3 is available
+    if ! command -v python3 &> /dev/null; then
+        echo "Error: Python 3 is required for the interactive manager"
         exit 1
     fi
     
-    command="$2"
-    blacklist_pattern="Bash($command:*)"
-    
-    # Read current blacklist
-    current_blacklist=$(read_blacklisted_permissions)
-    
-    # Check if already blacklisted
-    if echo "$current_blacklist" | grep -Fxq "$blacklist_pattern"; then
-        echo "Already blacklisted: $blacklist_pattern"
-    else
-        # Add to blacklist
-        if [[ -n "$current_blacklist" ]]; then
-            new_blacklist=$(echo -e "$current_blacklist\n$blacklist_pattern" | grep -v '^$' | sort -u)
-        else
-            new_blacklist="$blacklist_pattern"
-        fi
-        
-        # Convert to JSON array
-        json_array="[]"
-        while IFS= read -r pattern; do
-            if [[ -n "$pattern" ]]; then
-                json_array=$(echo "$json_array" | jq --arg pattern "$pattern" '. += [$pattern]')
-            fi
-        done <<< "$new_blacklist"
-        
-        # Update blacklist.json
-        jq --argjson patterns "$json_array" '.permissions.blacklist = $patterns' "$BLACKLIST_FILE" > "$BLACKLIST_FILE.tmp" && mv "$BLACKLIST_FILE.tmp" "$BLACKLIST_FILE"
-        echo "✓ Added to blacklist: $blacklist_pattern"
-    fi
-    
-    # Remove from allowed.json if present
-    current_allowed=$(read_allowed_permissions)
-    if echo "$current_allowed" | grep -Fxq "$blacklist_pattern"; then
-        # Filter out the blacklisted permission
-        filtered_allowed=$(echo "$current_allowed" | grep -Fxv "$blacklist_pattern")
-        write_allowed_permissions "$filtered_allowed"
-        echo "✓ Removed from allowed: $blacklist_pattern"
-    fi
-    
+    # Run the interactive manager
+    python3 "$ROOT_INSTALL_DIR/manage.py"
     exit 0
 fi
 
