@@ -1,0 +1,352 @@
+#!/usr/bin/env python3
+# @author madebycm (2025)
+
+"""
+QuickLoad - Instruments Script
+Creates a symlinked folder structure in ~/Documents/Instruments containing only .nki files
+Uses the same intelligent logic as smartfilter for organization
+"""
+
+import os
+import logging
+import shutil
+from pathlib import Path
+import subprocess
+import config
+
+# Target directory for instruments
+INSTRUMENTS_DIR = "/opt/instruments"
+
+def setup_logging():
+    """Configure logging for the application"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    return logging.getLogger(__name__)
+
+def find_kontakt_files(search_paths):
+    """
+    Find all .nki and .nksn files in the search paths
+    Returns separate lists for instruments and snapshots with brand/library structure information
+    """
+    logger = logging.getLogger(__name__)
+    nki_files = []
+    nksn_files = []
+    
+    for search_path in search_paths:
+        if not os.path.exists(search_path):
+            logger.warning(f"Path does not exist: {search_path}")
+            continue
+            
+        logger.info(f"Scanning: {search_path}")
+        
+        for root, dirs, files in os.walk(search_path):
+            for file in files:
+                file_lower = file.lower()
+                
+                if file_lower.endswith(config.NKI_EXTENSION) or file_lower.endswith(config.NKSN_EXTENSION):
+                    file_path = os.path.join(root, file)
+                    
+                    # Extract brand and library from path
+                    rel_path = os.path.relpath(root, search_path)
+                    path_parts = rel_path.split(os.sep)
+                    
+                    # Skip if path is too shallow
+                    if len(path_parts) < 2:
+                        continue
+                    
+                    brand = path_parts[0]
+                    
+                    # Find library name - skip common folder names
+                    library = None
+                    for i, part in enumerate(path_parts[1:], 1):
+                        if part.lower() not in ['instruments', 'multis', 'snapshots', 'presets', 
+                                                 'snap shot presets', 'snapshots (presets)', 'samples']:
+                            library = part
+                            break
+                    
+                    if not library:
+                        library = path_parts[1]
+                    
+                    file_info = {
+                        'path': file_path,
+                        'filename': file,
+                        'brand': brand,
+                        'library': library,
+                        'rel_path': rel_path
+                    }
+                    
+                    if file_lower.endswith(config.NKI_EXTENSION):
+                        nki_files.append(file_info)
+                    elif file_lower.endswith(config.NKSN_EXTENSION):
+                        nksn_files.append(file_info)
+    
+    return nki_files, nksn_files
+
+def count_nki_files_in_library(nki_files, brand, library):
+    """Count how many .nki files are in a specific brand/library combination"""
+    count = 0
+    library_files = []
+    
+    for nki_file in nki_files:
+        if nki_file['brand'] == brand and nki_file['library'] == library:
+            count += 1
+            library_files.append(nki_file)
+    
+    return count, library_files
+
+def create_instruments_structure():
+    """
+    Create the ~/Documents/Instruments structure with .nki files and .nksn snapshots
+    Applies intelligent flattening similar to smartfilter
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("Creating Instruments structure...")
+    
+    # Clear existing directory if it exists
+    if os.path.exists(INSTRUMENTS_DIR):
+        try:
+            shutil.rmtree(INSTRUMENTS_DIR)
+        except Exception as e:
+            logger.error(f"❌ Failed to clear directory: {e}")
+            return 0
+    
+    # Find all .nki and .nksn files
+    nki_files, nksn_files = find_kontakt_files(config.SEARCH_PATHS)
+    
+    if not nki_files and not nksn_files:
+        logger.warning("No .nki or .nksn files found")
+        return 0
+    
+    # Create main directory
+    os.makedirs(INSTRUMENTS_DIR, exist_ok=True)
+    
+    # Group files by brand/library
+    nki_libraries = {}
+    nksn_libraries = {}
+    
+    for nki_file in nki_files:
+        key = f"{nki_file['brand']}/{nki_file['library']}"
+        if key not in nki_libraries:
+            nki_libraries[key] = []
+        nki_libraries[key].append(nki_file)
+    
+    for nksn_file in nksn_files:
+        key = f"{nksn_file['brand']}/{nksn_file['library']}"
+        if key not in nksn_libraries:
+            nksn_libraries[key] = []
+        nksn_libraries[key].append(nksn_file)
+    
+    changes_made = 0
+    
+    # Get all unique library keys from both nki and nksn files
+    all_library_keys = set(nki_libraries.keys()) | set(nksn_libraries.keys())
+    
+    # Process each brand/library combination
+    for library_key in all_library_keys:
+        brand, library = library_key.split('/', 1)
+        
+        # Create brand directory
+        brand_dir = os.path.join(INSTRUMENTS_DIR, brand)
+        os.makedirs(brand_dir, exist_ok=True)
+        
+        # Get files for this library
+        library_nki_files = nki_libraries.get(library_key, [])
+        library_nksn_files = nksn_libraries.get(library_key, [])
+        
+        # Process .nki files
+        if library_nki_files:
+            # Apply intelligent flattening logic for .nki files
+            if len(library_nki_files) == 1 and not library_nksn_files:
+                # Single .nki file with no snapshots - flatten to brand level with library name
+                nki_file = library_nki_files[0]
+                flattened_name = f"{library}.nki"
+                target_path = os.path.join(brand_dir, flattened_name)
+                
+                try:
+                    os.symlink(nki_file['path'], target_path)
+                    changes_made += 1
+                except Exception as e:
+                    logger.error(f"Failed to create symlink for {flattened_name}: {e}")
+            else:
+                # Multiple .nki files OR has snapshots - keep library structure
+                library_dir = os.path.join(brand_dir, library)
+                os.makedirs(library_dir, exist_ok=True)
+                
+                # Track filenames to handle duplicates
+                filename_counts = {}
+                
+                for nki_file in library_nki_files:
+                    base_filename = nki_file['filename']
+                    
+                    # Handle duplicate filenames by adding a counter
+                    if base_filename in filename_counts:
+                        filename_counts[base_filename] += 1
+                        name, ext = os.path.splitext(base_filename)
+                        unique_filename = f"{name}_{filename_counts[base_filename]}{ext}"
+                    else:
+                        filename_counts[base_filename] = 0
+                        unique_filename = base_filename
+                    
+                    target_path = os.path.join(library_dir, unique_filename)
+                    
+                    try:
+                        os.symlink(nki_file['path'], target_path)
+                        changes_made += 1
+                    except Exception as e:
+                        logger.error(f"Failed to create symlink for {unique_filename}: {e}")
+                
+                # Process .nksn snapshots if they exist
+                if library_nksn_files:
+                    snapshots_dir = os.path.join(library_dir, "!!Snapshots")
+                    os.makedirs(snapshots_dir, exist_ok=True)
+                    
+                    # Track snapshot filenames to handle duplicates
+                    snapshot_filename_counts = {}
+                    
+                    for nksn_file in library_nksn_files:
+                        base_filename = nksn_file['filename']
+                        
+                        # Handle duplicate filenames by adding a counter
+                        if base_filename in snapshot_filename_counts:
+                            snapshot_filename_counts[base_filename] += 1
+                            name, ext = os.path.splitext(base_filename)
+                            unique_filename = f"{name}_{snapshot_filename_counts[base_filename]}{ext}"
+                        else:
+                            snapshot_filename_counts[base_filename] = 0
+                            unique_filename = base_filename
+                        
+                        target_path = os.path.join(snapshots_dir, unique_filename)
+                        
+                        try:
+                            os.symlink(nksn_file['path'], target_path)
+                            changes_made += 1
+                        except Exception as e:
+                            logger.error(f"Failed to create snapshot symlink for {unique_filename}: {e}")
+                
+                # Track library stats for summary
+                nki_count = len(library_nki_files)
+                nksn_count = len(library_nksn_files)
+        
+        # Handle case where library only has snapshots (no .nki files)
+        elif library_nksn_files:
+            library_dir = os.path.join(brand_dir, library)
+            os.makedirs(library_dir, exist_ok=True)
+            
+            snapshots_dir = os.path.join(library_dir, "!!Snapshots")
+            os.makedirs(snapshots_dir, exist_ok=True)
+            
+            # Track snapshot filenames to handle duplicates
+            snapshot_filename_counts = {}
+            
+            for nksn_file in library_nksn_files:
+                base_filename = nksn_file['filename']
+                
+                # Handle duplicate filenames by adding a counter
+                if base_filename in snapshot_filename_counts:
+                    snapshot_filename_counts[base_filename] += 1
+                    name, ext = os.path.splitext(base_filename)
+                    unique_filename = f"{name}_{snapshot_filename_counts[base_filename]}{ext}"
+                else:
+                    snapshot_filename_counts[base_filename] = 0
+                    unique_filename = base_filename
+                
+                target_path = os.path.join(snapshots_dir, unique_filename)
+                
+                try:
+                    os.symlink(nksn_file['path'], target_path)
+                    changes_made += 1
+                except Exception as e:
+                    logger.error(f"Failed to create snapshot symlink for {unique_filename}: {e}")
+    
+    # Create summary statistics
+    brand_stats = {}
+    for library_key in all_library_keys:
+        brand = library_key.split('/')[0]
+        if brand not in brand_stats:
+            brand_stats[brand] = {'libraries': 0, 'instruments': 0, 'snapshots': 0}
+        brand_stats[brand]['libraries'] += 1
+        brand_stats[brand]['instruments'] += len(nki_libraries.get(library_key, []))
+        brand_stats[brand]['snapshots'] += len(nksn_libraries.get(library_key, []))
+    
+    logger.info("")
+    logger.info(f"✓ Created {changes_made} symlinks in {INSTRUMENTS_DIR}")
+    logger.info(f"  {len(brand_stats)} brands, {len(all_library_keys)} libraries")
+    logger.info(f"  {len(nki_files)} instruments, {len(nksn_files)} snapshots")
+    
+    return changes_made
+
+def apply_perfect_settings():
+    """Apply perfect settings using the perfectsettings.sh script"""
+    logger = logging.getLogger(__name__)
+    
+    # Get the script path relative to this file
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    perfect_settings_script = os.path.join(script_dir, "perfectsettings.sh")
+    
+    if not os.path.exists(perfect_settings_script):
+        logger.warning("⚠️  perfectsettings.sh not found, skipping perfect settings")
+        return False
+    
+    logger.info("")
+    logger.info("Applying Kontakt settings...")
+    
+    try:
+        # Make sure the script is executable
+        os.chmod(perfect_settings_script, 0o755)
+        
+        # Run the script
+        result = subprocess.run([perfect_settings_script], 
+                                capture_output=True, 
+                                text=True, 
+                                check=True)
+        
+        # Log the output
+        if result.stdout:
+            for line in result.stdout.strip().split('\n'):
+                logger.info(f"   {line}")
+        
+        if result.stderr:
+            for line in result.stderr.strip().split('\n'):
+                logger.warning(f"   {line}")
+        
+        logger.info("✓ Settings applied")
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        logger.error(f"✗ Failed to apply settings: {e}")
+        if e.stdout:
+            logger.error(f"   Output: {e.stdout}")
+        if e.stderr:
+            logger.error(f"   Error: {e.stderr}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Error running perfectsettings.sh: {e}")
+        return False
+
+def main():
+    """Main function to create instruments structure"""
+    logger = setup_logging()
+    
+    logger.info("QuickLoad Instruments")
+    logger.info(f"Target: {INSTRUMENTS_DIR}")
+    
+    try:
+        changes = create_instruments_structure()
+        
+        if changes == 0:
+            logger.info("⚠️  No instruments found to organize")
+        
+        # Apply perfect settings after creating instruments structure
+        apply_perfect_settings()
+        
+        return 0 if changes > 0 else 1
+        
+    except Exception as e:
+        logger.error(f"❌ Error creating instruments structure: {e}")
+        return 1
+
+if __name__ == "__main__":
+    exit(main())
