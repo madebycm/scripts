@@ -152,6 +152,8 @@ if [ "$1" = "allowed" ]; then
     exit 0
 fi
 
+# Command handlers will be placed after function definitions
+
 # Find .claude/settings.local.json file
 find_settings_file() {
     local current_dir="$PWD"
@@ -221,6 +223,18 @@ sync_permissions() {
     local allowed_perms=$(read_allowed_permissions)
     local json_perms=$(jq -r '.permissions.allow[]' "$settings_file" 2>/dev/null | grep -E '^Bash\(' | sort -u)
     local blacklisted_perms=$(read_blacklisted_permissions)
+    
+    # Find new permissions from local that aren't in allowed yet
+    local new_from_local=""
+    while IFS= read -r perm; do
+        if [[ -n "$perm" ]] && ! echo "$allowed_perms" | grep -Fxq "$perm"; then
+            if [[ -n "$new_from_local" ]]; then
+                new_from_local="$new_from_local"$'\n'"$perm"
+            else
+                new_from_local="$perm"
+            fi
+        fi
+    done <<< "$json_perms"
     
     # Merge permissions (union of both sets)
     local all_perms=$(echo -e "$allowed_perms\n$json_perms" | grep -v '^$' | sort -u)
@@ -298,6 +312,17 @@ sync_permissions() {
     echo "  - Local settings: $settings_file"
     echo "  - Global allowed: $ALLOWED_FILE"
     echo "  - Blacklist: $BLACKLIST_FILE"
+    
+    # Show new commands added from local
+    if [[ -n "$new_from_local" ]]; then
+        echo ""
+        echo "✓ New commands added to allowed from local project:"
+        while IFS= read -r perm; do
+            if [[ -n "$perm" ]]; then
+                echo "  + $perm"
+            fi
+        done <<< "$new_from_local"
+    fi
 }
 
 # Main execution
@@ -312,5 +337,85 @@ main() {
         exit 1
     fi
 }
+
+# Handle add command
+if [ "$1" = "add" ]; then
+    if [ -z "$2" ]; then
+        echo "Error: Please specify a command to add"
+        echo "Usage: permsync add <command>"
+        echo "Example: permsync add tail"
+        exit 1
+    fi
+    
+    command="$2"
+    permission="Bash($command:*)"
+    
+    # Read current allowed permissions
+    current_perms=$(read_allowed_permissions)
+    
+    # Check if permission already exists
+    if echo "$current_perms" | grep -Fxq "$permission"; then
+        echo "Permission already exists: $permission"
+        exit 0
+    fi
+    
+    # Add the new permission
+    new_perms=$(echo -e "$current_perms\n$permission" | grep -v '^$' | sort -u)
+    write_allowed_permissions "$new_perms"
+    
+    echo "✓ Added permission: $permission"
+    exit 0
+fi
+
+# Handle bl (blacklist) command
+if [ "$1" = "bl" ]; then
+    if [ -z "$2" ]; then
+        echo "Error: Please specify a command to blacklist"
+        echo "Usage: permsync bl <command>"
+        echo "Example: permsync bl rm"
+        exit 1
+    fi
+    
+    command="$2"
+    blacklist_pattern="Bash($command:*)"
+    
+    # Read current blacklist
+    current_blacklist=$(read_blacklisted_permissions)
+    
+    # Check if already blacklisted
+    if echo "$current_blacklist" | grep -Fxq "$blacklist_pattern"; then
+        echo "Already blacklisted: $blacklist_pattern"
+    else
+        # Add to blacklist
+        if [[ -n "$current_blacklist" ]]; then
+            new_blacklist=$(echo -e "$current_blacklist\n$blacklist_pattern" | grep -v '^$' | sort -u)
+        else
+            new_blacklist="$blacklist_pattern"
+        fi
+        
+        # Convert to JSON array
+        json_array="[]"
+        while IFS= read -r pattern; do
+            if [[ -n "$pattern" ]]; then
+                json_array=$(echo "$json_array" | jq --arg pattern "$pattern" '. += [$pattern]')
+            fi
+        done <<< "$new_blacklist"
+        
+        # Update blacklist.json
+        jq --argjson patterns "$json_array" '.permissions.blacklist = $patterns' "$BLACKLIST_FILE" > "$BLACKLIST_FILE.tmp" && mv "$BLACKLIST_FILE.tmp" "$BLACKLIST_FILE"
+        echo "✓ Added to blacklist: $blacklist_pattern"
+    fi
+    
+    # Remove from allowed.json if present
+    current_allowed=$(read_allowed_permissions)
+    if echo "$current_allowed" | grep -Fxq "$blacklist_pattern"; then
+        # Filter out the blacklisted permission
+        filtered_allowed=$(echo "$current_allowed" | grep -Fxv "$blacklist_pattern")
+        write_allowed_permissions "$filtered_allowed"
+        echo "✓ Removed from allowed: $blacklist_pattern"
+    fi
+    
+    exit 0
+fi
 
 main "$@"

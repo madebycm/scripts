@@ -98,6 +98,7 @@ The blacklist supports wildcard patterns using `*` to match any characters. For 
 2. **Blacklist Filtering**: Blacklisted commands are removed from `allowed.json` only
 3. **Preservation**: Local settings can still contain blacklisted commands
 4. **Idempotent**: Running multiple times produces the same result
+5. **Sync Reporting**: Shows new commands added from local projects to the global allowed list
 
 ## Commands
 
@@ -106,6 +107,8 @@ The blacklist supports wildcard patterns using `*` to match any characters. For 
 - `permsync uninstall` - Remove the tool
 - `permsync blacklist` - Open blacklist.json in your editor
 - `permsync allowed` - Open allowed.json in your editor
+- `permsync add <command>` - Add a command to allowed.json (e.g., `permsync add tail`)
+- `permsync bl <command>` - Add a command to blacklist and remove from allowed.json (e.g., `permsync bl rm`)
 
 ## Files
 
