@@ -1,0 +1,20 @@
+# Hetzner Cloud Server Defaults
+# @author madebycm (2025)
+# Default configuration for auto server creation
+
+# Server configuration
+SERVER_TYPE=cx22
+IMAGE=ubuntu-24.04
+LOCATION=hel1
+SSH_KEY=majn0923@cm
+START_AFTER_CREATE=true
+
+# Default server name prefix (used if no name provided)
+DEFAULT_NAME_PREFIX=server
+
+# Server specs for CX22
+# RAM: 4GB
+# vCPU: 2
+# Storage: 40GB SSD  
+# Cost: €4.15/month
+# Network: 20TB bandwidth, 1 Gbps
