@@ -5,36 +5,6 @@
 # Update system packages
 apt update && apt upgrade -y
 
-# Install essential packages
-apt install -y curl wget git htop vim nano ufw fail2ban
-
-# Setup basic firewall
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow ssh
-ufw --force enable
-
-# Configure fail2ban for SSH protection
-systemctl enable fail2ban
-systemctl start fail2ban
-
-# Set timezone
-timedatectl set-timezone UTC
-
-# Create a basic user (optional - commented out)
-# useradd -m -s /bin/bash deploy
-# usermod -aG sudo deploy
-
-# Install Docker (commented out - uncomment if needed)
-# curl -fsSL https://get.docker.com -o get-docker.sh
-# sh get-docker.sh
-# systemctl enable docker
-# systemctl start docker
-
-# Display system info
-echo "=== Server Setup Complete ==="
-echo "Hostname: $(hostname)"
-echo "IP: $(curl -s ifconfig.me)"
-echo "Uptime: $(uptime)"
-echo "Disk Usage: $(df -h / | tail -1)"
-echo "Memory: $(free -h | grep Mem)"
+curl -sS https://installer.cloudpanel.io/ce/v2/install.sh -o install.sh; \
+echo "a3ba69a8102345127b4ae0e28cfe89daca675cbc63cd39225133cdd2fa02ad36 install.sh" | \
+sha256sum -c && sudo CLOUD=hetzner bash install.sh

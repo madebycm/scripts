@@ -38,8 +38,11 @@ show_usage() {
     echo -e "${BLUE}Hetzner Cloud Manager${NC}"
     echo ""
     echo "Usage:"
-    echo "  $0                    # Interactive mode"
+    echo "  $0                    # Login mode (list servers to choose from)"
+    echo "  $0 <servername>       # Direct SSH to server"
     echo "  $0 --auto --name NAME # Auto-create server with specified name"
+    echo "  $0 --interactive      # Interactive menu mode"
+    echo "  $0 --login [NAME]     # SSH to server (list if no name provided)"
     echo "  $0 --help            # Show this help"
     echo ""
     echo "Environment variables:"
@@ -54,27 +57,55 @@ show_usage() {
 
 # Parse command line arguments
 AUTO_MODE=false
+LOGIN_MODE=false
+INTERACTIVE_MODE=false
 SERVER_NAME=""
+
+# If no arguments, default to login mode
+if [ $# -eq 0 ]; then
+    LOGIN_MODE=true
+fi
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --auto)
             AUTO_MODE=true
+            LOGIN_MODE=false
             shift
             ;;
         --name)
             SERVER_NAME="$2"
             shift 2
             ;;
+        --login)
+            LOGIN_MODE=true
+            if [[ $# -gt 1 && ! $2 =~ ^-- ]]; then
+                SERVER_NAME="$2"
+                shift 2
+            else
+                shift
+            fi
+            ;;
+        --interactive)
+            INTERACTIVE_MODE=true
+            LOGIN_MODE=false
+            shift
+            ;;
         --help|-h)
             load_defaults
             show_usage
             exit 0
             ;;
-        *)
+        --*)
             echo -e "${RED}Unknown option: $1${NC}"
             show_usage
             exit 1
+            ;;
+        *)
+            # If it's not an option, treat it as server name for login
+            SERVER_NAME="$1"
+            LOGIN_MODE=true
+            shift
             ;;
     esac
 done
@@ -120,6 +151,92 @@ check_api_error() {
         return 1
     fi
     return 0
+}
+
+# Function to handle login using API
+handle_login() {
+    echo -e "${BLUE}Fetching servers from Hetzner Cloud API...${NC}"
+    
+    local response=$(make_api_request "GET" "/servers")
+    if ! check_api_error "$response"; then
+        echo -e "${RED}Failed to fetch servers from API${NC}"
+        exit 1
+    fi
+    
+    local server_count=$(echo "$response" | jq '.servers | length')
+    
+    if [ "$server_count" -eq 0 ]; then
+        echo -e "${YELLOW}No servers found in your Hetzner Cloud project${NC}"
+        exit 1
+    fi
+    
+    if [ -n "$SERVER_NAME" ]; then
+        # Direct login to specified server
+        local server_data=$(echo "$response" | jq -r ".servers[] | select(.name == \"$SERVER_NAME\") | \"\(.name)|\(.public_net.ipv4.ip // \"N/A\")|\(.status)\"")
+        
+        if [ -z "$server_data" ]; then
+            echo -e "${RED}Server '$SERVER_NAME' not found${NC}"
+            echo -e "${YELLOW}Available servers:${NC}"
+            echo "$response" | jq -r '.servers[] | "  \(.name) (\(.public_net.ipv4.ip // "N/A"))"'
+            exit 1
+        fi
+        
+        local server_ip=$(echo "$server_data" | cut -d'|' -f2)
+        local server_status=$(echo "$server_data" | cut -d'|' -f3)
+        
+        if [ "$server_status" != "running" ]; then
+            echo -e "${YELLOW}Warning: Server '$SERVER_NAME' is not running (status: $server_status)${NC}"
+        fi
+        
+        if [ "$server_ip" = "N/A" ]; then
+            echo -e "${RED}Server '$SERVER_NAME' has no public IP${NC}"
+            exit 1
+        fi
+        
+        echo -e "${BLUE}Connecting to $SERVER_NAME ($server_ip)...${NC}"
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$server_ip
+    else
+        # Show list and let user choose
+        echo -e "${BLUE}Available servers:${NC}"
+        echo ""
+        printf "%-15s %-15s %-12s %-10s\\n" "NAME" "IP" "TYPE" "STATUS"
+        printf "%-15s %-15s %-12s %-10s\\n" "----" "--" "----" "------"
+        
+        echo "$response" | jq -r '.servers[] | "\(.name)|\(.public_net.ipv4.ip // "N/A")|\(.server_type.name)|\(.status)"' | \
+        while IFS='|' read -r name ip type status; do
+            printf "%-15s %-15s %-12s %-10s\\n" "$name" "$ip" "$type" "$status"
+        done
+        
+        echo ""
+        read -p "Enter server name to connect: " selected_server
+        
+        if [ -z "$selected_server" ]; then
+            echo -e "${YELLOW}No server selected${NC}"
+            exit 0
+        fi
+        
+        local selected_data=$(echo "$response" | jq -r ".servers[] | select(.name == \"$selected_server\") | \"\(.name)|\(.public_net.ipv4.ip // \"N/A\")|\(.status)\"")
+        
+        if [ -z "$selected_data" ]; then
+            echo -e "${RED}Server '$selected_server' not found${NC}"
+            exit 1
+        fi
+        
+        local selected_ip=$(echo "$selected_data" | cut -d'|' -f2)
+        local selected_status=$(echo "$selected_data" | cut -d'|' -f3)
+        
+        if [ "$selected_status" != "running" ]; then
+            echo -e "${YELLOW}Warning: Server '$selected_server' is not running (status: $selected_status)${NC}"
+        fi
+        
+        if [ "$selected_ip" = "N/A" ]; then
+            echo -e "${RED}Server '$selected_server' has no public IP${NC}"
+            exit 1
+        fi
+        
+        echo -e "${BLUE}Connecting to $selected_server ($selected_ip)...${NC}"
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$selected_ip
+    fi
 }
 
 # Function to list servers
@@ -308,6 +425,7 @@ create_cx22_server() {
         echo "Server ID: $server_id"
         echo "Server IP: $server_ip"
         echo "Status: Creating (will be available shortly)"
+        
     else
         echo -e "${RED}Failed to create server${NC}"
         return 1
@@ -429,6 +547,12 @@ show_menu() {
     esac
 }
 
+# Handle login mode
+if [ "$LOGIN_MODE" = true ]; then
+    handle_login
+    exit 0
+fi
+
 # Handle auto mode
 if [ "$AUTO_MODE" = true ]; then
     if [ -z "$SERVER_NAME" ]; then
@@ -474,6 +598,7 @@ if [ "$AUTO_MODE" = true ]; then
         echo "Server IP: $server_ip"
         echo "Status: Creating (will be available shortly)"
         echo ""
+        
         
         # Wait for SSH to become available and run post-install commands
         echo -e "${BLUE}Waiting for SSH connectivity...${NC}"
@@ -525,10 +650,13 @@ if [ "$AUTO_MODE" = true ]; then
     exit 0
 fi
 
-# Main interactive loop
-while true; do
-    show_menu
-    echo ""
-    read -p "Press Enter to continue or Ctrl+C to exit..."
-    clear
-done
+# Handle interactive mode
+if [ "$INTERACTIVE_MODE" = true ]; then
+    # Main interactive loop
+    while true; do
+        show_menu
+        echo ""
+        read -p "Press Enter to continue or Ctrl+C to exit..."
+        clear
+    done
+fi
