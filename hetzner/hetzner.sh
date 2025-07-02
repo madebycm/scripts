@@ -704,7 +704,9 @@ if [ "$AUTO_MODE" = true ]; then
                 grep -v '^#' "$postinstall_file" | grep -v '^[[:space:]]*$' | while IFS= read -r cmd; do
                     if [ -n "$cmd" ]; then
                         echo -e "${YELLOW}Executing: $cmd${NC}"
-                        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$server_ip "$cmd"
+                        # Export CloudPanel variables and execute command
+                        env_vars="export CLOUDPANEL_ADMIN_USERNAME='$DEFAULT_CLOUDPANEL_ADMIN_USERNAME' CLOUDPANEL_ADMIN_PASSWORD='$DEFAULT_CLOUDPANEL_ADMIN_PASSWORD' CLOUDPANEL_ADMIN_EMAIL='$DEFAULT_CLOUDPANEL_ADMIN_EMAIL' CLOUDPANEL_ADMIN_FIRSTNAME='$DEFAULT_CLOUDPANEL_ADMIN_FIRSTNAME' CLOUDPANEL_ADMIN_LASTNAME='$DEFAULT_CLOUDPANEL_ADMIN_LASTNAME' CLOUDPANEL_ADMIN_TIMEZONE='$DEFAULT_CLOUDPANEL_ADMIN_TIMEZONE';"
+                        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$server_ip "$env_vars $cmd"
                     fi
                 done
                 

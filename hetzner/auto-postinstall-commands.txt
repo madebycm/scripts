@@ -11,4 +11,4 @@ curl -sS https://installer.cloudpanel.io/ce/v2/install.sh -o install.sh; echo "a
 sleep 30
 
 # Create admin user automatically
-clpctl user:add --userName='madebycm' --email='admin@example.com' --firstName='Made' --lastName='ByCM' --password='demo123' --role='admin' --timezone='UTC' --status='1'
+clpctl user:add --userName='$CLOUDPANEL_ADMIN_USERNAME' --email='$CLOUDPANEL_ADMIN_EMAIL' --firstName='$CLOUDPANEL_ADMIN_FIRSTNAME' --lastName='$CLOUDPANEL_ADMIN_LASTNAME' --password='$CLOUDPANEL_ADMIN_PASSWORD' --role='admin' --timezone='$CLOUDPANEL_ADMIN_TIMEZONE' --status='1'
