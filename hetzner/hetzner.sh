@@ -474,8 +474,49 @@ if [ "$AUTO_MODE" = true ]; then
         echo "Server IP: $server_ip"
         echo "Status: Creating (will be available shortly)"
         echo ""
-        echo -e "${GREEN}You can SSH to the server once it's ready:${NC}"
-        echo "ssh root@$server_ip"
+        
+        # Wait for SSH to become available and run post-install commands
+        echo -e "${BLUE}Waiting for SSH connectivity...${NC}"
+        ssh_attempts=0
+        max_attempts=60  # 5 minutes max (60 * 5 seconds)
+        
+        while [ $ssh_attempts -lt $max_attempts ]; do
+            if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$server_ip "echo 'SSH connection successful'" >/dev/null 2>&1; then
+                echo -e "${GREEN}SSH connection established!${NC}"
+                break
+            else
+                echo -n "."
+                sleep 5
+                ssh_attempts=$((ssh_attempts + 1))
+            fi
+        done
+        
+        if [ $ssh_attempts -eq $max_attempts ]; then
+            echo -e "${RED}Failed to establish SSH connection after 5 minutes${NC}"
+            echo -e "${YELLOW}You can manually SSH later: ssh root@$server_ip${NC}"
+        else
+            # Execute post-install commands if file exists
+            postinstall_file="$(dirname "$0")/auto-postinstall-commands.txt"
+            if [ -f "$postinstall_file" ]; then
+                echo -e "${BLUE}Running post-install commands...${NC}"
+                
+                # Filter out comments and empty lines, then execute each command
+                grep -v '^#' "$postinstall_file" | grep -v '^[[:space:]]*$' | while IFS= read -r cmd; do
+                    if [ -n "$cmd" ]; then
+                        echo -e "${YELLOW}Executing: $cmd${NC}"
+                        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$server_ip "$cmd"
+                    fi
+                done
+                
+                echo -e "${GREEN}Post-install commands completed!${NC}"
+            else
+                echo -e "${YELLOW}No auto-postinstall-commands.txt found, skipping post-install${NC}"
+            fi
+            
+            echo ""
+            echo -e "${GREEN}Server setup complete! You can now SSH:${NC}"
+            echo "ssh root@$server_ip"
+        fi
     else
         echo -e "${RED}Failed to create server${NC}"
         exit 1
