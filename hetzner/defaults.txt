@@ -12,6 +12,14 @@ START_AFTER_CREATE=true
 # Default server name prefix (used if no name provided)
 DEFAULT_NAME_PREFIX=server
 
+# CloudPanel Admin User Configuration
+CLOUDPANEL_ADMIN_USERNAME=madebycm
+CLOUDPANEL_ADMIN_PASSWORD=M00nlight123!
+CLOUDPANEL_ADMIN_EMAIL=christian.meinhold@gmail.com
+CLOUDPANEL_ADMIN_FIRSTNAME=Christian
+CLOUDPANEL_ADMIN_LASTNAME=Meinhold
+CLOUDPANEL_ADMIN_TIMEZONE=Europe/Oslo
+
 # Server specs for CX22
 # RAM: 4GB
 # vCPU: 2

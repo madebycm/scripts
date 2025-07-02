@@ -6,3 +6,9 @@
 apt update && apt upgrade -y
 
 curl -sS https://installer.cloudpanel.io/ce/v2/install.sh -o install.sh; echo "a3ba69a8102345127b4ae0e28cfe89daca675cbc63cd39225133cdd2fa02ad36 install.sh" | sha256sum -c && sudo CLOUD=hetzner bash install.sh
+
+# Wait for CloudPanel to fully start
+sleep 30
+
+# Create admin user automatically
+clpctl user:add --userName='madebycm' --email='admin@example.com' --firstName='Made' --lastName='ByCM' --password='demo123' --role='admin' --timezone='UTC' --status='1'
