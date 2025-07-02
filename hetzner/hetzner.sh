@@ -43,6 +43,7 @@ show_usage() {
     echo "  $0 --auto --name NAME # Auto-create server with specified name"
     echo "  $0 --interactive      # Interactive menu mode"
     echo "  $0 --login [NAME]     # SSH to server (list if no name provided)"
+    echo "  $0 --delete [NAME]    # Delete server (interactive if no name)"
     echo "  $0 --help            # Show this help"
     echo ""
     echo "Environment variables:"
@@ -59,6 +60,7 @@ show_usage() {
 AUTO_MODE=false
 LOGIN_MODE=false
 INTERACTIVE_MODE=false
+DELETE_MODE=false
 SERVER_NAME=""
 
 # If no arguments, default to login mode
@@ -90,6 +92,16 @@ while [[ $# -gt 0 ]]; do
             INTERACTIVE_MODE=true
             LOGIN_MODE=false
             shift
+            ;;
+        --delete)
+            DELETE_MODE=true
+            LOGIN_MODE=false
+            if [[ $# -gt 1 && ! $2 =~ ^-- ]]; then
+                SERVER_NAME="$2"
+                shift 2
+            else
+                shift
+            fi
             ;;
         --help|-h)
             load_defaults
@@ -647,6 +659,47 @@ if [ "$AUTO_MODE" = true ]; then
         exit 1
     fi
     
+    exit 0
+fi
+
+# Handle delete mode
+if [ "$DELETE_MODE" = true ]; then
+    if [ -n "$SERVER_NAME" ]; then
+        # Direct delete by name
+        echo -e "${BLUE}Looking up server: $SERVER_NAME${NC}"
+        response=$(make_api_request "GET" "/servers")
+        
+        if ! check_api_error "$response"; then
+            echo -e "${RED}Failed to fetch servers${NC}"
+            exit 1
+        fi
+        
+        server_id=$(echo "$response" | jq -r ".servers[] | select(.name == \"$SERVER_NAME\") | .id")
+        
+        if [ -z "$server_id" ]; then
+            echo -e "${RED}Server '$SERVER_NAME' not found${NC}"
+            exit 1
+        fi
+        
+        echo -e "${YELLOW}Found server '$SERVER_NAME' (ID: $server_id)${NC}"
+        echo -e "${RED}This will permanently delete the server. Type 'DELETE' to confirm:${NC}"
+        read confirm
+        
+        if [ "$confirm" = "DELETE" ]; then
+            echo -e "${BLUE}Deleting server...${NC}"
+            delete_response=$(make_api_request "DELETE" "/servers/$server_id")
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}Server '$SERVER_NAME' deleted successfully!${NC}"
+            else
+                echo -e "${RED}Failed to delete server${NC}"
+            fi
+        else
+            echo -e "${YELLOW}Delete cancelled${NC}"
+        fi
+    else
+        # Interactive delete
+        delete_server
+    fi
     exit 0
 fi
 
