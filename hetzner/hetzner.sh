@@ -700,15 +700,38 @@ if [ "$AUTO_MODE" = true ]; then
             if [ -f "$postinstall_file" ]; then
                 echo -e "${BLUE}Running post-install commands...${NC}"
                 
-                # Filter out comments and empty lines, then execute each command
-                grep -v '^#' "$postinstall_file" | grep -v '^[[:space:]]*$' | while IFS= read -r cmd; do
-                    if [ -n "$cmd" ]; then
-                        echo -e "${YELLOW}Executing: $cmd${NC}"
-                        # Export CloudPanel variables and execute command
-                        env_vars="export CLOUDPANEL_ADMIN_USERNAME='$DEFAULT_CLOUDPANEL_ADMIN_USERNAME' CLOUDPANEL_ADMIN_PASSWORD='$DEFAULT_CLOUDPANEL_ADMIN_PASSWORD' CLOUDPANEL_ADMIN_EMAIL='$DEFAULT_CLOUDPANEL_ADMIN_EMAIL' CLOUDPANEL_ADMIN_FIRSTNAME='$DEFAULT_CLOUDPANEL_ADMIN_FIRSTNAME' CLOUDPANEL_ADMIN_LASTNAME='$DEFAULT_CLOUDPANEL_ADMIN_LASTNAME' CLOUDPANEL_ADMIN_TIMEZONE='$DEFAULT_CLOUDPANEL_ADMIN_TIMEZONE';"
-                        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$server_ip "$env_vars $cmd"
+                # Create a single script with all commands and execute it
+                temp_script="/tmp/postinstall_commands.sh"
+                
+                # Build the script content
+                script_content="#!/bin/bash\n"
+                script_content+="export CLOUDPANEL_ADMIN_USERNAME='$DEFAULT_CLOUDPANEL_ADMIN_USERNAME'\n"
+                script_content+="export CLOUDPANEL_ADMIN_PASSWORD='$DEFAULT_CLOUDPANEL_ADMIN_PASSWORD'\n"
+                script_content+="export CLOUDPANEL_ADMIN_EMAIL='$DEFAULT_CLOUDPANEL_ADMIN_EMAIL'\n"
+                script_content+="export CLOUDPANEL_ADMIN_FIRSTNAME='$DEFAULT_CLOUDPANEL_ADMIN_FIRSTNAME'\n"
+                script_content+="export CLOUDPANEL_ADMIN_LASTNAME='$DEFAULT_CLOUDPANEL_ADMIN_LASTNAME'\n"
+                script_content+="export CLOUDPANEL_ADMIN_TIMEZONE='$DEFAULT_CLOUDPANEL_ADMIN_TIMEZONE'\n\n"
+                
+                # Add each command from the post-install file
+                while IFS= read -r cmd; do
+                    if [[ ! "$cmd" =~ ^[[:space:]]*# ]] && [[ -n "$(echo "$cmd" | tr -d '[:space:]')" ]]; then
+                        echo -e "${YELLOW}Adding command: $cmd${NC}"
+                        script_content+="echo 'Executing: $cmd'\n"
+                        script_content+="$cmd\n"
+                        script_content+="echo 'Command completed'\n\n"
                     fi
-                done
+                done < "$postinstall_file"
+                
+                # Write script to temp file and execute
+                echo -e "$script_content" > "$temp_script"
+                chmod +x "$temp_script"
+                
+                echo -e "${BLUE}Uploading and executing post-install script...${NC}"
+                scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$temp_script" root@$server_ip:/tmp/postinstall.sh
+                ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@$server_ip "chmod +x /tmp/postinstall.sh && /tmp/postinstall.sh"
+                
+                # Clean up
+                rm -f "$temp_script"
                 
                 echo -e "${GREEN}Post-install commands completed!${NC}"
             else
