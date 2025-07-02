@@ -33,6 +33,61 @@ load_defaults() {
     fi
 }
 
+# Function to validate post-install commands
+validate_postinstall_commands() {
+    local postinstall_file="$1"
+    local errors=0
+    
+    if [ ! -f "$postinstall_file" ]; then
+        echo -e "${YELLOW}No post-install commands file found at: $postinstall_file${NC}"
+        return 0  # Not an error, just no commands to run
+    fi
+    
+    echo -e "${BLUE}Validating post-install commands...${NC}"
+    
+    # Read and validate each command
+    local line_num=0
+    while IFS= read -r line; do
+        line_num=$((line_num + 1))
+        
+        # Skip comments and empty lines
+        if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "$(echo "$line" | tr -d '[:space:]')" ]]; then
+            continue
+        fi
+        
+        # Basic syntax check using bash -n
+        if ! echo "$line" | bash -n 2>/dev/null; then
+            echo -e "${RED}Syntax error in line $line_num: $line${NC}"
+            errors=$((errors + 1))
+        else
+            echo -e "${GREEN}✓${NC} Line $line_num: $(echo "$line" | cut -c1-60)..."
+        fi
+        
+        # Check for common issues
+        if [[ "$line" =~ \\ ]]; then
+            echo -e "${YELLOW}Warning: Line $line_num contains backslash - line continuations may not work over SSH${NC}"
+        fi
+        
+        # Check for sudo without -n or password
+        if [[ "$line" =~ sudo ]] && ! [[ "$line" =~ "sudo -n" ]] && ! [[ "$line" =~ "DEBIAN_FRONTEND=noninteractive" ]]; then
+            echo -e "${YELLOW}Warning: Line $line_num uses sudo which may prompt for password${NC}"
+        fi
+        
+        # Check for interactive commands
+        if [[ "$line" =~ "(apt-get|apt)" ]] && ! [[ "$line" =~ "-y" ]]; then
+            echo -e "${YELLOW}Warning: Line $line_num may require interaction (missing -y flag)${NC}"
+        fi
+    done < "$postinstall_file"
+    
+    if [ $errors -gt 0 ]; then
+        echo -e "${RED}Found $errors syntax error(s) in post-install commands${NC}"
+        return 1
+    else
+        echo -e "${GREEN}All post-install commands validated successfully${NC}"
+        return 0
+    fi
+}
+
 # Function to show usage
 show_usage() {
     echo -e "${BLUE}Hetzner Cloud Manager${NC}"
@@ -574,6 +629,14 @@ if [ "$AUTO_MODE" = true ]; then
     fi
     
     echo -e "${BLUE}Auto-creating server: $SERVER_NAME${NC}"
+    
+    # Validate post-install commands first
+    postinstall_file="$(dirname "$0")/auto-postinstall-commands.txt"
+    if ! validate_postinstall_commands "$postinstall_file"; then
+        echo -e "${RED}Post-install command validation failed. Please fix the errors before creating the server.${NC}"
+        exit 1
+    fi
+    echo ""
     
     # Use defaults from file
     location="$DEFAULT_LOCATION"
