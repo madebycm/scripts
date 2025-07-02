@@ -116,6 +116,7 @@ AUTO_MODE=false
 LOGIN_MODE=false
 INTERACTIVE_MODE=false
 DELETE_MODE=false
+LIST_MODE=false
 SERVER_NAME=""
 
 # If no arguments, default to login mode
@@ -157,6 +158,11 @@ while [[ $# -gt 0 ]]; do
             else
                 shift
             fi
+            ;;
+        --list)
+            LIST_MODE=true
+            LOGIN_MODE=false
+            shift
             ;;
         --help|-h)
             load_defaults
@@ -788,6 +794,12 @@ if [ "$DELETE_MODE" = true ]; then
         # Interactive delete
         delete_server
     fi
+    exit 0
+fi
+
+# Handle list mode
+if [ "$LIST_MODE" = true ]; then
+    list_servers
     exit 0
 fi
 
